@@ -929,6 +929,7 @@ dependencies = [
  "cortex-m-rt",
  "embedded-hal",
  "fugit",
+ "nb 1.0.0",
  "panic-halt",
  "pio",
  "pio-proc",

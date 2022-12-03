@@ -1,23 +1,26 @@
 use rp2040_hal::{
-    gpio::bank0::Gpio0,
-    gpio::{Pin, PinId, PinMode, ValidPinMode},
+    gpio::{Function, FunctionConfig, Pin, PinId, ValidPinMode},
     pio::PIOExt,
-    pio::{PIOBuilder, ShiftDirection, Tx, UninitStateMachine, PIO, SM0},
+    pio::{PIOBuilder, Tx, UninitStateMachine, PIO, SM0},
 };
 
-pub fn init<I, M, P>(
-    _pin: Pin<I, M>,
+pub fn init<I, P>(
+    _pin: Pin<I, Function<P>>,
     pio: &mut PIO<P>,
     sm: UninitStateMachine<(P, SM0)>,
     clock_freq: fugit::HertzU32,
 ) -> Tx<(P, SM0)>
 where
     I: PinId,
-    M: PinMode + ValidPinMode<I>,
-    P: PIOExt,
+    P: PIOExt + FunctionConfig,
+    Function<P>: ValidPinMode<I>,
 {
-    const CYCLES_PER_BIT: u32 = (10) as u32;
+    const T1: u8 = 2; // start bit
+    const T2: u8 = 5; // data bit
+    const T3: u8 = 3; // stop bit
+    const CYCLES_PER_BIT: u32 = (T1 + T2 + T3) as u32;
     const FREQ: u32 = 800_000;
+
     let program = pio_proc::pio_asm!(
         ".side_set 1",
         "",
@@ -39,13 +42,14 @@ where
     let div = clock_freq.to_Hz() / (FREQ * CYCLES_PER_BIT);
     let installed = pio.install(&program.program).unwrap();
     let (mut sm, _, tx) = PIOBuilder::from_program(installed)
-        .side_set_pin_base(Gpio0::DYN.num)
+        .buffers(rp2040_hal::pio::Buffers::OnlyTx)
+        .side_set_pin_base(I::DYN.num)
         .autopull(true)
         .pull_threshold(24)
-        .out_shift_direction(ShiftDirection::Right) // default is left
+        .out_shift_direction(rp2040_hal::pio::ShiftDirection::Left)
         .clock_divisor(div as f32)
         .build(sm);
-    sm.set_pindirs([(Gpio0::DYN.num, rp2040_hal::pio::PinDir::Output)]);
+    sm.set_pindirs([(I::DYN.num, rp2040_hal::pio::PinDir::Output)]);
     sm.start();
     tx
 }
